@@ -42,7 +42,8 @@ button:disabled{opacity:.6;cursor:wait}
 /* The app below is encrypted (AES-256-GCM, key from username + password via PBKDF2-SHA256).
    Without the password this page holds nothing readable. */
 (()=>{
-const SALT="__SALT__", IV="__IV__", ITER=__ITER__, KEY="wa-key", DAYS=30;
+const SALT="__SALT__", IV="__IV__", ITER=__ITER__, KEY="wa-key";
+const midnight=()=>{const d=new Date();d.setHours(24,0,0,0);return +d};  // a login lasts until the end of today
 const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 const tob64=u=>{let s="";for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)};
 const $=id=>document.getElementById(id), f=$("f"), m=$("m"), w=$("w");
@@ -63,12 +64,12 @@ f.addEventListener("submit",async e=>{
   try{key=await derive($("u").value,$("p").value)}catch(_){show("Something went wrong. Try again.",true);return}
   try{await crypto.subtle.decrypt({name:"AES-GCM",iv:b64(IV)},key,b64($("d").textContent.trim()))}
   catch(_){$("p").value="";show("Wrong username or password.",true);$("p").focus();return}
-  try{localStorage.setItem(KEY,JSON.stringify({k:tob64(new Uint8Array(await crypto.subtle.exportKey("raw",key))),exp:Date.now()+DAYS*864e5}))}catch(_){}
+  try{localStorage.setItem(KEY,JSON.stringify({k:tob64(new Uint8Array(await crypto.subtle.exportKey("raw",key))),exp:midnight()}))}catch(_){}
   await open(key);
 });
-(async()=>{ // remembered on this device for 30 days
+(async()=>{ // remembered on this device until midnight
   let s=null;try{s=JSON.parse(localStorage.getItem(KEY)||"null")}catch(_){}
-  if(s&&s.k&&s.exp>Date.now()){
+  if(s&&s.k&&s.exp>Date.now()&&s.exp<=midnight()){
     w.hidden=false;
     try{await open(await crypto.subtle.importKey("raw",b64(s.k),"AES-GCM",false,["decrypt"]));return}
     catch(_){try{localStorage.removeItem(KEY)}catch(_){}}
