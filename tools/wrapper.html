@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lock In">
+<meta name="theme-color" content="#0a1117">
+<meta name="robots" content="noindex,nofollow">
+<title>Lock In</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@900&family=Figtree:wght@400;700&display=swap">
+<style>
+:root{--bg:#e9eef2;--surface:#fff;--sunk:#f3f6f8;--ink:#0f1b26;--muted:#5b6c7b;--line:#d3dde5;--accent:#1c5d8e;--warn:#b4472f;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0a1117;--surface:#111b24;--sunk:#0d161e;--ink:#e4edf4;--muted:#8c9fb0;--line:#22313d;--accent:#6db3ea;--warn:#ef7d62;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;
+  min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px max(16px,env(safe-area-inset-left,0px))}
+form{width:100%;max-width:340px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px;display:grid;gap:12px}
+h1{font-family:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;font-weight:900;font-size:40px;line-height:.9;margin:0 0 4px;text-transform:uppercase}
+h1 span{color:var(--accent)}
+label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:grid;gap:4px}
+input{font:inherit;font-size:16px;color:inherit;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%}
+button{font:inherit;font-weight:700;border:0;border-radius:8px;padding:11px 14px;background:var(--accent);color:var(--surface);cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.msg{margin:0;font-size:13px;font-weight:700;min-height:1em;color:var(--muted)}
+.msg.err{color:var(--warn)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<form id="f" hidden autocomplete="on">
+  <h1>Lock The Fuck <span>In</span></h1>
+  <label>Username<input type="text" id="u" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+  <label>Password<input type="password" id="p" autocomplete="current-password" required></label>
+  <p class="msg" id="m" role="status"></p>
+  <button id="b">Log in</button>
+</form>
+<p class="msg" id="w" hidden>Unlocking…</p>
+<script type="application/octet-stream" id="d">__DATA__</script>
+<script>
+/* The app below is encrypted (AES-256-GCM, key from username + password via PBKDF2-SHA256).
+   Without the password this page holds nothing readable. */
+(()=>{
+const SALT="__SALT__", IV="__IV__", ITER=__ITER__, KEY="wa-key", DAYS=30;
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const tob64=u=>{let s="";for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)};
+const $=id=>document.getElementById(id), f=$("f"), m=$("m"), w=$("w");
+function show(msg,err){w.hidden=true;f.hidden=false;m.textContent=msg||"";m.className="msg"+(err?" err":"");$("b").disabled=false}
+async function open(key){
+  const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64(IV)},key,b64($("d").textContent.trim()));
+  const html=await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+  document.open();document.write(html);document.close();
+}
+async function derive(user,pass){
+  const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(user.trim().toLowerCase()+":"+pass),"PBKDF2",false,["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt:b64(SALT),iterations:ITER,hash:"SHA-256"},base,{name:"AES-GCM",length:256},true,["decrypt"]);
+}
+if(!window.crypto||!crypto.subtle||!window.DecompressionStream){show("This browser is too old to open the app. Update it and try again.",true);return}
+f.addEventListener("submit",async e=>{
+  e.preventDefault();$("b").disabled=true;show("Unlocking…");$("b").disabled=true;
+  let key;
+  try{key=await derive($("u").value,$("p").value)}catch(_){show("Something went wrong. Try again.",true);return}
+  try{await crypto.subtle.decrypt({name:"AES-GCM",iv:b64(IV)},key,b64($("d").textContent.trim()))}
+  catch(_){$("p").value="";show("Wrong username or password.",true);$("p").focus();return}
+  try{localStorage.setItem(KEY,JSON.stringify({k:tob64(new Uint8Array(await crypto.subtle.exportKey("raw",key))),exp:Date.now()+DAYS*864e5}))}catch(_){}
+  await open(key);
+});
+(async()=>{ // remembered on this device for 30 days
+  let s=null;try{s=JSON.parse(localStorage.getItem(KEY)||"null")}catch(_){}
+  if(s&&s.k&&s.exp>Date.now()){
+    w.hidden=false;
+    try{await open(await crypto.subtle.importKey("raw",b64(s.k),"AES-GCM",false,["decrypt"]));return}
+    catch(_){try{localStorage.removeItem(KEY)}catch(_){}}
+  }
+  show();$("u").focus();
+})();
+})();
+</script>
+</body>
+</html>
